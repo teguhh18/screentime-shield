@@ -1,0 +1,3 @@
+// Placeholder for DeviceAdminReceiver (Phase 2).
+// The BroadcastReceiver for Device Administrator
+// anti-cheat will be implemented here.

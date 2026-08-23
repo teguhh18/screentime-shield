@@ -1,0 +1,48 @@
+name: screentimeshield
+description: "Kids ScreenTime Shield - Parental screen time control app for Android."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management & DI
+  flutter_riverpod: ^2.6.1
+
+  # Local Storage (NoSQL, offline-first)
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+
+  # Functional Error Handling (Either pattern)
+  fpdart: ^1.1.0
+
+  # Secure Storage for PIN/credentials (Android-only)
+  flutter_secure_storage: ^9.2.4
+
+  # Hashing (SHA-256 for PIN)
+  crypto: ^3.0.6
+
+  # Value equality for state/model classes
+  equatable: ^2.0.7
+
+  # File system paths
+  path_provider: ^2.1.5
+
+  # Date/time formatting
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+  # Hive code generation
+  hive_generator: ^2.0.1
+  build_runner: ^2.4.13
+
+flutter:
+  uses-material-design: true

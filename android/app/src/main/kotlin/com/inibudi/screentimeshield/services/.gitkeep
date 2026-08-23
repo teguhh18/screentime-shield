@@ -1,0 +1,3 @@
+// Placeholder for Android Foreground Service (Phase 2).
+// The monitoring service that tracks active app usage
+// and triggers overlays will be implemented here.

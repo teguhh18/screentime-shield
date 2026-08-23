@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Device Administrator policy declaration.
+     We only need the admin privilege to prevent uninstall.
+     No force-lock or wipe-data policies are required. -->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies>
+        <!-- Minimal policy: required for DeviceAdminReceiver registration -->
+        <force-lock />
+    </uses-policies>
+</device-admin>

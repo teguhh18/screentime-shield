@@ -1,0 +1,4 @@
+// Feature: auth (Setup PIN, Login Screen)
+// data/     — Data sources, repositories implementation
+// domain/   — Entities, repository contracts, use cases
+// presentation/ — UI screens, controllers/view models
