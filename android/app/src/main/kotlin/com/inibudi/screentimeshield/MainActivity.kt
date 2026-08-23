@@ -1,6 +1,7 @@
 package com.inibudi.screentimeshield
 
 import android.app.Activity
+import android.app.KeyguardManager
 import android.content.Intent
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -30,6 +31,9 @@ class MainActivity : FlutterActivity() {
         private const val CHANNEL_USAGE_STATS = "com.inibudi.screentimeshield/usage_stats"
         private const val CHANNEL_APP_LOCK = "com.inibudi.screentimeshield/app_lock"
         private const val CHANNEL_DEVICE_ADMIN = "com.inibudi.screentimeshield/device_admin"
+        private const val CHANNEL_DEVICE_SECURITY = "com.inibudi.screentimeshield/device_security"
+
+        private const val REQUEST_CODE_CONFIRM_CREDENTIAL = 9001
     }
 
     private lateinit var usageStatsHelper: UsageStatsHelper
@@ -38,6 +42,7 @@ class MainActivity : FlutterActivity() {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var pendingAdminResult: MethodChannel.Result? = null
+    private var pendingCredentialResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -49,6 +54,7 @@ class MainActivity : FlutterActivity() {
         registerUsageStatsChannel(flutterEngine)
         registerAppLockChannel(flutterEngine)
         registerDeviceAdminChannel(flutterEngine)
+        registerDeviceSecurityChannel(flutterEngine)
     }
 
     override fun onDestroy() {
@@ -164,11 +170,57 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    @Deprecated("Using deprecated API for Device Admin result callback")
+    private fun registerDeviceSecurityChannel(flutterEngine: FlutterEngine) {
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            CHANNEL_DEVICE_SECURITY
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isDeviceSecure" -> {
+                    val keyguardManager = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
+                    result.success(keyguardManager.isDeviceSecure)
+                }
+                "confirmDeviceCredential" -> {
+                    val keyguardManager = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
+                    if (!keyguardManager.isDeviceSecure) {
+                        // No lock screen set on device -> auto-pass
+                        result.success(true)
+                        return@setMethodCallHandler
+                    }
+
+                    @Suppress("DEPRECATION")
+                    val intent = keyguardManager.createConfirmDeviceCredentialIntent(
+                        "Verifikasi Identitas",
+                        "Masukkan PIN/Password/Pola perangkat untuk melanjutkan."
+                    )
+
+                    if (intent != null) {
+                        pendingCredentialResult = result
+                        @Suppress("DEPRECATION")
+                        startActivityForResult(intent, REQUEST_CODE_CONFIRM_CREDENTIAL)
+                    } else {
+                        // Could not create intent -> treat as no security set
+                        result.success(true)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    @Deprecated("Using deprecated API for Device Admin and Keyguard result callbacks")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == DeviceAdminHelper.REQUEST_CODE_ENABLE_ADMIN) {
-            pendingAdminResult = null
+
+        when (requestCode) {
+            DeviceAdminHelper.REQUEST_CODE_ENABLE_ADMIN -> {
+                pendingAdminResult = null
+            }
+            REQUEST_CODE_CONFIRM_CREDENTIAL -> {
+                val verified = resultCode == Activity.RESULT_OK
+                pendingCredentialResult?.success(verified)
+                pendingCredentialResult = null
+            }
         }
     }
 

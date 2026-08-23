@@ -18,6 +18,10 @@ const String kAppLockChannel =
 const String kDeviceAdminChannel =
     'com.inibudi.screentimeshield/device_admin';
 
+/// Channel for device security (KeyguardManager) operations.
+const String kDeviceSecurityChannel =
+    'com.inibudi.screentimeshield/device_security';
+
 // ── Method Enums ────────────────────────────────────────────────────
 
 /// Methods available on the [kUsageStatsChannel].
@@ -74,4 +78,17 @@ enum DeviceAdminMethod {
 
   final String methodName;
   const DeviceAdminMethod(this.methodName);
+}
+
+/// Methods available on the [kDeviceSecurityChannel].
+enum DeviceSecurityMethod {
+  /// Check if device has a secure lock screen (PIN/Password/Pattern).
+  isDeviceSecure('isDeviceSecure'),
+
+  /// Launch the system credential confirmation dialog.
+  /// Returns true if verified, false if cancelled/failed.
+  confirmDeviceCredential('confirmDeviceCredential');
+
+  final String methodName;
+  const DeviceSecurityMethod(this.methodName);
 }
