@@ -10,6 +10,7 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
+import android.app.usage.UsageEvents
 import android.os.Process
 import android.provider.Settings
 import android.util.Base64
@@ -20,7 +21,8 @@ import java.util.Calendar
 
 /**
  * Helper class wrapping [UsageStatsManager] for querying app usage data.
- * Uses queryAndAggregateUsageStats to prevent double-counting across interval buckets.
+ * Computes daily usage from the event stream (queryEvents) so totals
+ * match Android's Digital Wellbeing exactly.
  */
 class UsageStatsHelper(private val context: Context) {
 
@@ -77,33 +79,84 @@ class UsageStatsHelper(private val context: Context) {
 
     // ── Usage Data Queries ──────────────────────────────────────────
 
+    companion object {
+        private const val DAY_MS = 24 * 60 * 60 * 1000L
+    }
+
     /**
-     * Queries per-app aggregated usage statistics for the given time range.
-     * Uses queryAndAggregateUsageStats to ensure single clean entry per package.
+     * Computes per-app foreground usage (in ms) within [startTime, endTime] by
+     * replaying foreground/background events, clamping sessions to the query range.
+     *
+     * This matches Digital Wellbeing's calculation. Do NOT use
+     * queryAndAggregateUsageStats for daily totals: its totalTimeInForeground
+     * covers the whole stats bucket (which may start before the query range),
+     * causing inflated numbers that don't match the system screen time.
+     */
+    private fun computeUsageFromEvents(startTime: Long, endTime: Long): HashMap<String, Long> {
+        val usageMap = HashMap<String, Long>()
+        val lastResumeMap = HashMap<String, Long>()
+
+        // Look back one extra day so sessions spanning midnight are handled:
+        // a session resumed yesterday and paused today must only count today's part.
+        val usageEvents = usageStatsManager.queryEvents(startTime - DAY_MS, endTime)
+        val event = UsageEvents.Event()
+
+        while (usageEvents.hasNextEvent()) {
+            usageEvents.getNextEvent(event)
+            @Suppress("DEPRECATION")
+            when (event.eventType) {
+                UsageEvents.Event.MOVE_TO_FOREGROUND -> lastResumeMap[event.packageName] = event.timeStamp
+                UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                    lastResumeMap.remove(event.packageName)?.let { resumeTime ->
+                        val from = maxOf(resumeTime, startTime)
+                        val to = minOf(event.timeStamp, endTime)
+                        if (to > from) {
+                            usageMap[event.packageName] = (usageMap[event.packageName] ?: 0L) + (to - from)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sessions still open at endTime (app currently in foreground)
+        for ((pkg, resumeTime) in lastResumeMap) {
+            val from = maxOf(resumeTime, startTime)
+            if (endTime > from) {
+                usageMap[pkg] = (usageMap[pkg] ?: 0L) + (endTime - from)
+            }
+        }
+
+        return usageMap
+    }
+
+    /**
+     * Queries per-app usage statistics for the given time range,
+     * computed from the event stream so totals match Android's
+     * Digital Wellbeing exactly.
      */
     suspend fun getUsageStats(startTime: Long, endTime: Long): ChannelResult {
         return withContext(Dispatchers.IO) {
             try {
-                val aggregatedStatsMap = usageStatsManager.queryAndAggregateUsageStats(startTime, endTime)
+                val usageMap = computeUsageFromEvents(startTime, endTime)
 
-                if (aggregatedStatsMap.isNullOrEmpty()) {
+                if (usageMap.isEmpty()) {
                     return@withContext ChannelResult.Success(emptyList<Map<String, Any>>())
                 }
 
-                val result = aggregatedStatsMap.values
-                    .filter { it.totalTimeInForeground > 0 }
-                    .map { stat ->
+                val result = usageMap
+                    .filter { it.value > 0 }
+                    .map { (packageName, usageMs) ->
                         val appName = try {
-                            val appInfo = packageManager.getApplicationInfo(stat.packageName, 0)
+                            val appInfo = packageManager.getApplicationInfo(packageName, 0)
                             packageManager.getApplicationLabel(appInfo).toString()
                         } catch (_: PackageManager.NameNotFoundException) {
-                            stat.packageName
+                            packageName
                         }
 
                         mapOf(
-                            "packageName" to stat.packageName,
+                            "packageName" to packageName,
                             "appName" to appName,
-                            "totalTimeInForeground" to stat.totalTimeInForeground
+                            "totalTimeInForeground" to usageMs
                         )
                     }
                     .sortedByDescending { it["totalTimeInForeground"] as Long }
@@ -174,22 +227,32 @@ class UsageStatsHelper(private val context: Context) {
 
     fun getCurrentForegroundApp(): String? {
         val endTime = System.currentTimeMillis()
-        val startTime = endTime - 1000 // Last 1 second
+        val startTime = endTime - 30_000 // Look back 30s for the latest transition
 
-        val stats = usageStatsManager.queryUsageStats(
-            UsageStatsManager.INTERVAL_DAILY,
-            startTime,
-            endTime
-        )
+        val usageEvents = usageStatsManager.queryEvents(startTime, endTime)
+        val event = UsageEvents.Event()
 
-        return stats
-            ?.filter { it.totalTimeInForeground > 0 }
-            ?.maxByOrNull { it.lastTimeUsed }
-            ?.packageName
+        var latestEventTime = -1L
+        var latestPackage: String? = null
+
+        while (usageEvents.hasNextEvent()) {
+            usageEvents.getNextEvent(event)
+            @Suppress("DEPRECATION")
+            if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND &&
+                event.timeStamp > latestEventTime
+            ) {
+                latestEventTime = event.timeStamp
+                latestPackage = event.packageName
+            }
+        }
+
+        return latestPackage
     }
 
     /**
-     * Returns total foreground usage (in ms) for today starting from 00:00 midnight using queryAndAggregateUsageStats.
+     * Returns total foreground usage (in ms) for today starting from 00:00 midnight.
+     * Uses the same event-based calculation as the UI so the lock trigger
+     * and the displayed usage are always in sync.
      */
     fun getTodayUsageForPackage(packageName: String): Long {
         val calendar = Calendar.getInstance().apply {
@@ -202,8 +265,7 @@ class UsageStatsHelper(private val context: Context) {
         val startTime = calendar.timeInMillis
         val endTime = System.currentTimeMillis()
 
-        val aggregatedStatsMap = usageStatsManager.queryAndAggregateUsageStats(startTime, endTime)
-        return aggregatedStatsMap[packageName]?.totalTimeInForeground ?: 0L
+        return computeUsageFromEvents(startTime, endTime)[packageName] ?: 0L
     }
 
     private fun drawableToBase64(drawable: Drawable): String {
