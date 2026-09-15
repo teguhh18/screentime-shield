@@ -6,7 +6,6 @@ import '../../../core/constants/app_dimensions.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../core/widgets/app_usage_tile.dart';
 import '../../../core/widgets/time_limit_dialog.dart';
-import '../../settings/presentation/settings_screen.dart';
 import 'dashboard_controller.dart';
 
 /// Main Dashboard showing total screen time stats and app limit configuration.
@@ -19,20 +18,7 @@ class DashboardScreen extends ConsumerWidget {
     final notifier = ref.read(dashboardStateProvider.notifier);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('ScreenTime Shield'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              );
-            },
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('ScreenTime Shield')),
       body: state.isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(

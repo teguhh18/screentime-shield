@@ -78,14 +78,17 @@ class PermissionsNotifier extends StateNotifier<PermissionsState> {
 
   Future<void> requestUsagePermission() async {
     await _usageRepo.requestUsagePermission();
+    await checkAllPermissions();
   }
 
   Future<void> requestOverlayPermission() async {
     await _lockRepo.requestOverlayPermission();
+    await checkAllPermissions();
   }
 
   Future<void> requestDeviceAdmin() async {
     await _adminRepo.requestAdmin();
+    await checkAllPermissions();
   }
 
   Future<bool> removeDeviceAdmin() async {

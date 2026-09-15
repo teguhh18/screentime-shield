@@ -7,7 +7,7 @@ import 'features/auth/presentation/auth_controller.dart';
 import 'features/auth/presentation/onboarding_screen.dart';
 import 'features/auth/presentation/pin_login_screen.dart';
 import 'features/auth/presentation/pin_setup_screen.dart';
-import 'features/dashboard/presentation/dashboard_screen.dart';
+import 'features/shell/presentation/home_shell.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,7 +59,7 @@ class ScreenTimeShieldApp extends ConsumerWidget {
     }
 
     if (authState is AuthAuthenticated) {
-      return const DashboardScreen();
+      return const HomeShell();
     }
 
     return const PinLoginScreen();
