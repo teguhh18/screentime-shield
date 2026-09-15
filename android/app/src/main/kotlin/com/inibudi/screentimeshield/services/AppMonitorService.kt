@@ -17,6 +17,8 @@ import com.inibudi.screentimeshield.MainActivity
 import com.inibudi.screentimeshield.utils.OverlayHelper
 import com.inibudi.screentimeshield.utils.UsageStatsHelper
 import org.json.JSONArray
+import org.json.JSONObject
+import java.util.Calendar
 
 /**
  * Native Android Foreground Service for continuous app monitoring.
@@ -67,7 +69,9 @@ class AppMonitorService : Service() {
         val packageName: String,
         val appName: String,
         val timeLimitMs: Long,
-        val lockMode: String = "hardLock"
+        val lockMode: String = "hardLock",
+        /** Per-weekday limits in minutes, keyed by Calendar.DAY_OF_WEEK (1 = Sunday). */
+        val weeklyLimits: Map<Int, Int> = emptyMap()
     )
 
     private val handler = Handler(Looper.getMainLooper())
@@ -135,10 +139,11 @@ class AppMonitorService : Service() {
         }
 
         val config = monitoredAppsMap[currentPackage]
-        if (config != null && config.timeLimitMs > 0) {
+        val effectiveLimitMs = config?.let { resolveEffectiveLimitMs(it) } ?: 0L
+        if (config != null && effectiveLimitMs > 0) {
             val todayUsageMs = usageStatsHelper.getTodayUsageForPackage(currentPackage)
 
-            if (todayUsageMs >= config.timeLimitMs) {
+            if (todayUsageMs >= effectiveLimitMs) {
                 if (config.lockMode == "snoozeAlarm") {
                     val snoozeUntil = snoozeExpirationMap[currentPackage] ?: 0L
                     val now = System.currentTimeMillis()
@@ -225,13 +230,42 @@ class AppMonitorService : Service() {
                     packageName = pkg,
                     appName = appName,
                     timeLimitMs = timeLimitMs,
-                    lockMode = lockMode
+                    lockMode = lockMode,
+                    weeklyLimits = parseWeeklyLimits(obj.optJSONObject("weeklyLimits"))
                 )
             }
 
             val prefs = getSharedPreferences("monitor_prefs", Context.MODE_PRIVATE)
             prefs.edit().putString("monitored_apps", jsonStr).apply()
         } catch (_: Exception) {}
+    }
+
+    /**
+     * Reads the per-weekday schedule. Payloads saved before this feature existed
+     * have no "weeklyLimits" key, so a missing/blank object means "no schedule"
+     * and every day keeps using the global time limit.
+     */
+    private fun parseWeeklyLimits(json: JSONObject?): Map<Int, Int> {
+        if (json == null || json.length() == 0) return emptyMap()
+        val result = HashMap<Int, Int>()
+        for (day in json.keys()) {
+            val dayOfWeek = day.toIntOrNull() ?: continue
+            if (dayOfWeek < Calendar.SUNDAY || dayOfWeek > Calendar.SATURDAY) continue
+            if (json.isNull(day)) continue
+            result[dayOfWeek] = json.optInt(day, 0)
+        }
+        return result
+    }
+
+    /**
+     * Limit in force right now: today's scheduled minutes when the weekday is
+     * scheduled on, otherwise the app's global limit. Resolved on every tick so
+     * a schedule change takes effect at midnight without restarting the service.
+     */
+    private fun resolveEffectiveLimitMs(config: AppConfig): Long {
+        val today = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
+        val minutes = config.weeklyLimits[today] ?: return config.timeLimitMs
+        return minutes * 60 * 1000L
     }
 
     private fun createNotificationChannel() {

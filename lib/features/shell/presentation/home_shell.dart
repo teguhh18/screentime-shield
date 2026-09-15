@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../dashboard/presentation/dashboard_screen.dart';
+import '../../schedule/presentation/schedule_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 
 // ── State ──────────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ class HomeShell extends ConsumerWidget {
 
   static const _tabs = <Widget>[
     DashboardScreen(),
+    ScheduleScreen(),
     SettingsScreen(),
   ];
 
@@ -58,6 +60,11 @@ class HomeShell extends ConsumerWidget {
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
             label: 'Home',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.calendar_month_outlined),
+            selectedIcon: Icon(Icons.calendar_month),
+            label: 'Schedule',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),

@@ -3,15 +3,16 @@ import 'package:flutter/material.dart';
 
 import '../constants/app_colors.dart';
 import '../constants/app_dimensions.dart';
-import '../utils/date_formatter.dart';
+import '../utils/weekly_limit.dart';
 import '../../features/dashboard/domain/monitored_app_model.dart';
 
-/// List item displaying installed app info, usage time, and lock mode.
-class AppUsageTile extends StatelessWidget {
+/// List item for the weekly schedule tab: app icon, name, schedule summary,
+/// and today's effective limit badge.
+class ScheduleAppTile extends StatelessWidget {
   final MonitoredApp app;
   final VoidCallback onTap;
 
-  const AppUsageTile({
+  const ScheduleAppTile({
     super.key,
     required this.app,
     required this.onTap,
@@ -20,7 +21,7 @@ class AppUsageTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final usageDuration = Duration(milliseconds: app.usageTimeMs);
+    final todayLimit = app.todayLimitMinutes;
 
     return Card(
       margin: const EdgeInsets.symmetric(
@@ -39,42 +40,30 @@ class AppUsageTile extends StatelessWidget {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const SizedBox(height: 2),
             Text(
-              'Today: ${DateFormatter.formatDuration(usageDuration)}',
-              style: TextStyle(
-                color: app.isLimitExceeded
-                    ? AppColors.error
-                    : theme.colorScheme.onSurfaceVariant,
+              WeeklyLimit.describe(app.weeklyLimits, app.timeLimitMinutes),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            if (app.isActive) ...[
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: [
-                  _badge(
-                    'Limit: ${app.todayLimitMinutes}m',
-                    AppColors.primary,
-                  ),
-                  if (app.weeklyLimits.isNotEmpty)
-                    _badge('Scheduled', AppColors.accent),
-                  _badge(
-                    app.lockMode == LockMode.hardLock
-                        ? 'Hard Lock'
-                        : 'Snooze Alarm',
-                    app.lockMode == LockMode.hardLock
-                        ? Colors.redAccent
-                        : Colors.orangeAccent,
-                  ),
-                ],
+            const SizedBox(height: 4),
+            _badge(
+              WeeklyLimit.describeToday(
+                app.weeklyLimits,
+                app.timeLimitMinutes,
               ),
-            ],
+              app.isLimitExceeded
+                  ? AppColors.error
+                  : (todayLimit > 0 ? AppColors.primary : theme.disabledColor),
+            ),
           ],
         ),
         trailing: Icon(
-          app.isActive ? Icons.timer : Icons.timer_outlined,
-          color: app.isActive ? AppColors.primary : theme.disabledColor,
+          app.weeklyLimits.isEmpty ? Icons.calendar_today_outlined : Icons.event_available,
+          color: app.weeklyLimits.isEmpty ? theme.disabledColor : AppColors.success,
         ),
       ),
     );

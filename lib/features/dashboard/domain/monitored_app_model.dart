@@ -7,6 +7,10 @@ abstract final class LockMode {
 }
 
 /// Represents an installed app with its screen time configuration.
+///
+/// Limits are resolved in this order:
+///   1. [weeklyLimits] entry for today's weekday (0 = unlimited that day)
+///   2. [timeLimitMinutes] global fallback when today has no entry
 class MonitoredApp extends Equatable {
   final String packageName;
   final String appName;
@@ -16,6 +20,10 @@ class MonitoredApp extends Equatable {
   final bool isMonitored;
   final String lockMode;
 
+  /// Per-weekday limits in minutes, keyed by [DateTime.weekday] (1 = Monday).
+  /// A missing key means "fall back to [timeLimitMinutes]".
+  final Map<int, int> weeklyLimits;
+
   const MonitoredApp({
     required this.packageName,
     required this.appName,
@@ -24,12 +32,23 @@ class MonitoredApp extends Equatable {
     this.usageTimeMs = 0,
     this.isMonitored = false,
     this.lockMode = LockMode.hardLock,
+    this.weeklyLimits = const {},
   });
 
-  bool get isLimitExceeded =>
-      isMonitored &&
-      timeLimitMinutes > 0 &&
-      usageTimeMs >= (timeLimitMinutes * 60 * 1000);
+  /// True when this app should be sent to the native monitor at all: either a
+  /// global limit is set, or a weekly schedule exists (which may be the only
+  /// thing configured).
+  bool get isActive => isMonitored || weeklyLimits.isNotEmpty;
+
+  /// Limit in effect for today, in minutes. 0 means unlimited.
+  int get todayLimitMinutes =>
+      weeklyLimits[DateTime.now().weekday] ?? timeLimitMinutes;
+
+  bool get isLimitExceeded {
+    if (!isActive) return false;
+    final limit = todayLimitMinutes;
+    return limit > 0 && usageTimeMs >= (limit * 60 * 1000);
+  }
 
   MonitoredApp copyWith({
     String? packageName,
@@ -39,6 +58,7 @@ class MonitoredApp extends Equatable {
     int? usageTimeMs,
     bool? isMonitored,
     String? lockMode,
+    Map<int, int>? weeklyLimits,
   }) {
     return MonitoredApp(
       packageName: packageName ?? this.packageName,
@@ -48,6 +68,7 @@ class MonitoredApp extends Equatable {
       usageTimeMs: usageTimeMs ?? this.usageTimeMs,
       isMonitored: isMonitored ?? this.isMonitored,
       lockMode: lockMode ?? this.lockMode,
+      weeklyLimits: weeklyLimits ?? this.weeklyLimits,
     );
   }
 
@@ -59,6 +80,8 @@ class MonitoredApp extends Equatable {
       'timeLimitMs': timeLimitMinutes * 60 * 1000,
       'isMonitored': isMonitored,
       'lockMode': lockMode,
+      // JSON object keys must be strings: {"1": 60, "2": 120}
+      'weeklyLimits': weeklyLimits.map((day, m) => MapEntry('$day', m)),
     };
   }
 
@@ -76,7 +99,20 @@ class MonitoredApp extends Equatable {
       usageTimeMs: usageTimeMs,
       isMonitored: map['isMonitored'] as bool? ?? false,
       lockMode: map['lockMode'] as String? ?? LockMode.hardLock,
+      // Tolerates pre-schedule payloads where the key is absent entirely.
+      weeklyLimits: _parseWeeklyLimits(map['weeklyLimits']),
     );
+  }
+
+  static Map<int, int> _parseWeeklyLimits(Object? raw) {
+    if (raw is! Map) return const {};
+    final parsed = <int, int>{};
+    raw.forEach((key, value) {
+      final day = int.tryParse('$key');
+      if (day == null || day < DateTime.monday || day > DateTime.sunday) return;
+      if (value is num) parsed[day] = value.toInt();
+    });
+    return parsed;
   }
 
   @override
@@ -88,5 +124,6 @@ class MonitoredApp extends Equatable {
         usageTimeMs,
         isMonitored,
         lockMode,
+        weeklyLimits,
       ];
 }

@@ -139,6 +139,18 @@ class MainActivity : FlutterActivity() {
                 jsonObj.put("appName", app["appName"] as? String ?: app["packageName"])
                 jsonObj.put("timeLimitMs", (app["timeLimitMs"] as Number).toLong())
                 jsonObj.put("lockMode", app["lockMode"] as? String ?: "hardLock")
+
+                // Per-weekday limits in minutes. Keys are Calendar.DAY_OF_WEEK
+                // (1 = Sunday), matching Dart's JSON keys from MonitoredApp.
+                val weeklyJson = org.json.JSONObject()
+                val weekly = app["weeklyLimits"] as? Map<*, *>
+                weekly?.forEach { (day, minutes) ->
+                    if (day != null && minutes is Number) {
+                        weeklyJson.put(day.toString(), minutes.toInt())
+                    }
+                }
+                jsonObj.put("weeklyLimits", weeklyJson)
+
                 jsonArray.put(jsonObj)
             }
 

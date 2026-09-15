@@ -44,8 +44,9 @@ class AppLockRepository {
   Future<Either<Failure, bool>> updateMonitoredApps(
     List<MonitoredApp> apps,
   ) async {
-    final monitoredOnly = apps.where((a) => a.isMonitored).toList();
-    final appsPayload = monitoredOnly.map((a) => a.toMap()).toList();
+    // isActive (not isMonitored): an app may only have a weekly schedule set.
+    final activeOnly = apps.where((a) => a.isActive).toList();
+    final appsPayload = activeOnly.map((a) => a.toMap()).toList();
 
     return _bridge.invokeNativeMethod<bool>(
       AppLockMethod.updateMonitoredApps.methodName,

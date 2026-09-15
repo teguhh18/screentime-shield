@@ -201,9 +201,28 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     await _lockRepo.updateMonitoredApps(updatedApps);
   }
 
-  /// Toggles monitoring on/off quickly.
-  Future<void> toggleMonitoring(String packageName, bool isMonitored) async {
+  /// Replaces the per-weekday schedule for a package.
+  ///
+  /// An empty map clears the schedule so every day follows the global limit.
+  Future<void> configureWeeklyLimits({
+    required String packageName,
+    required Map<int, int> weeklyLimits,
+  }) async {
     final updatedApps = state.apps.map((app) {
+      if (app.packageName == packageName) {
+        return app.copyWith(weeklyLimits: weeklyLimits);
+      }
+      return app;
+    }).toList();
+
+    state = state.copyWith(apps: updatedApps);
+
+    await _saveConfigsToStorage(updatedApps);
+    await _lockRepo.updateMonitoredApps(updatedApps);
+  }
+
+  /// Toggles monitoring on/off quickly.
+  Future<void> toggleMonitoring(String packageName, bool isMonitored) async {    final updatedApps = state.apps.map((app) {
       if (app.packageName == packageName) {
         final limit = isMonitored
             ? (app.timeLimitMinutes == 0 ? 30 : app.timeLimitMinutes)
@@ -224,8 +243,10 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
   /// Encodes monitored apps into JSON string and writes to Secure Storage & Hive.
   Future<void> _saveConfigsToStorage(List<MonitoredApp> apps) async {
     try {
-      final monitoredOnly = apps.where((a) => a.isMonitored).toList();
-      final configsList = monitoredOnly.map((a) => a.toMap()).toList();
+      // isActive (not isMonitored): an app may only have a weekly schedule set,
+      // with no global limit.
+      final activeOnly = apps.where((a) => a.isActive).toList();
+      final configsList = activeOnly.map((a) => a.toMap()).toList();
       final jsonStr = jsonEncode(configsList);
 
       // Save to FlutterSecureStorage (Encrypted SharedPreferences)
